@@ -1,11 +1,16 @@
 import express from "express";
-import { bookTicket, cancelBooking, confirmBooking, getTickets } from "../controller/ticketController";
+import {
+  addTicket,
+  deleteTicket,
+  getTickets,
+  updateTicket,
+} from "../controller/ticketController";
 
 const router = express.Router();
 
-router.get("/", getTickets);
-router.post("/book", bookTicket);
-router.post("/confirm/:id", confirmBooking);
-router.post("/cancel/:id", cancelBooking);
+router.get("/tickets", getTickets);
+router.post("/tickets", addTicket);
+router.put("/tickets/:id", updateTicket);
+router.delete("/tickets/:id", deleteTicket);
 
 export default router;
