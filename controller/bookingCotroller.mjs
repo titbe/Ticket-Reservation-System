@@ -1,11 +1,12 @@
-import stripe from "stripe";
+import Stripe from "stripe";
 import Booking from "../model/Booking.mjs";
 import Ticket from "../model/Ticket.mjs";
 
-const stripeClient = stripe(process.env.KEY_STRIPE_SECRET);
+const stripeClient = Stripe(process.env.KEY_STRIPE_SECRET);
 
 export const bookTicket = async (req, res) => {
-  const { ticketId, username } = req.body;
+  const { ticketId } = req.params;
+  const { username, quantity } = req.body;
 
   try {
     const now = new Date();
@@ -19,12 +20,13 @@ export const bookTicket = async (req, res) => {
     for (const booking of expiredBookings) {
       const ticket = await Ticket.findById(booking.ticket._id);
       if (ticket) {
-        ticket.quantity += 1; // Tăng lại số lượng vé đã bị giữ
-        ticket.bookedQuantity -= 1; // Giảm bookedQuantity vì booking đã hết hạn
+        ticket.quantity += booking.quantity; // Tăng lại số lượng vé đã bị giữ
+        ticket.bookedQuantity -= booking.quantity; // Giảm bookedQuantity vì booking đã hết hạn
         await ticket.save();
       }
 
-      await Booking.findByIdAndDelete(booking._id); // Xóa booking hết hạn
+      // Xóa booking hết hạn
+      await Booking.findByIdAndDelete(booking._id);
 
       // Xóa cookie liên quan
       res.clearCookie(`booking_${booking._id}`);
@@ -35,8 +37,8 @@ export const bookTicket = async (req, res) => {
     if (!ticket) {
       return res.status(400).json({ message: "Ticket not found" });
     }
-    if (ticket.quantity <= 0) {
-      return res.status(400).json({ message: "Ticket not available" });
+    if (ticket.quantity < quantity) {
+      return res.status(400).json({ message: "Not enough tickets available" });
     }
 
     const bookingTime = new Date();
@@ -45,6 +47,7 @@ export const bookTicket = async (req, res) => {
     const newBooking = new Booking({
       ticket: ticketId,
       username,
+      quantity,
       bookingTime,
       confirmed: false,
       expired: false,
@@ -53,17 +56,29 @@ export const bookTicket = async (req, res) => {
 
     await newBooking.save();
 
+    // Giảm số lượng vé
+    const updatedTicket = await Ticket.findOneAndUpdate(
+      { _id: ticketId, quantity: { $gte: quantity } }, // Đảm bảo số lượng vé hiện có >= số lượng vé ycau $gte là toán tử so sánh "greater than or equal" (lớn hơn hoặc bằng)
+      {
+        $inc: { quantity: -quantity, bookedQuantity: quantity }, // Atomic update
+      },
+      { new: true }
+    );
+    if (!updatedTicket) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "Failed to update ticket. It might have been booked by another request.",
+        });
+    }
+
     // Lưu thông tin thời gian vào cookie
     res.cookie(`booking_${newBooking._id}`, bookingTime.toISOString(), {
       maxAge: 5 * 60 * 1000, // Thời gian hết hạn cookie sau 5 phút
       httpOnly: true,
       signed: true, // Đảm bảo cookie được ký
     });
-
-    // Giảm số lượng vé
-    ticket.quantity -= 1;
-    ticket.bookedQuantity += 1;
-    await ticket.save();
 
     res.status(200).json({
       message: "Ticket booked successfully",
@@ -76,14 +91,16 @@ export const bookTicket = async (req, res) => {
 
 export const confirmBooking = async (req, res) => {
   const { bookingId } = req.params;
-  const { paymentMethodId, paymentAmount } = req.body;
+  const { paymentMethodId } = req.body;
 
   try {
     const booking = await Booking.findById(bookingId).populate("ticket");
+    // const booking = await Booking.findById(bookingId);
+
     if (!booking || booking.confirmed) {
       return res
         .status(400)
-        .json({ message: "Booking not found or already confirmed" });
+        .json({ message: "Booking not found or already confirmed" }, booking);
     }
 
     // Lấy thời gian booking từ cookie
@@ -105,8 +122,8 @@ export const confirmBooking = async (req, res) => {
       await Booking.findByIdAndDelete(bookingId);
 
       const ticket = await Ticket.findById(booking.ticket._id);
-      ticket.quantity += 1;
-      ticket.bookedQuantity -= 1;
+      ticket.quantity += booking.quantity;
+      ticket.bookedQuantity -= booking.quantity;
       await ticket.save();
 
       return res
@@ -115,8 +132,9 @@ export const confirmBooking = async (req, res) => {
     }
 
     // Xác nhận thanh toán qua Stripe
-    const paymentIntent = await stripeInstance.paymentIntents.create({
-      amount: Math.round(paymentAmount * 100), // Stripe tính theo cent
+    const totalPaymentAmount = booking.quantity * booking.ticket.price;
+    const paymentIntent = await stripeClient.paymentIntents.create({
+      amount: Math.round(totalPaymentAmount * 100), // Stripe tính theo cent
       currency: "usd",
       payment_method: paymentMethodId,
       confirm: true,
@@ -131,7 +149,7 @@ export const confirmBooking = async (req, res) => {
     // Cập nhật thông tin thanh toán và xác nhận booking
     booking.confirmed = true;
     booking.paymentDetails = {
-      amount: paymentAmount,
+      amount: totalPaymentAmount,
       paymentTime: now,
       method: "stripe",
       stripePaymentId: paymentIntent.id,
@@ -164,11 +182,11 @@ export const cancelBooking = async (req, res) => {
       // Tạo refund thông qua Stripe
       const refund = await stripeClient.refunds.create({
         paymentIntent: booking.paymentDetails.stripePaymentId,
-        amount: refundAmount, // Hoàn lại 90%
+        amount: Math.round(refundAmount * 100), // Stripe tính theo cent
       });
 
       booking.paymentDetails.refund = {
-        amount: refundAmount / 100, //Đổi lại thành đơn vị tiền tệ (USD)
+        amount: refundAmount, //Đổi lại thành đơn vị tiền tệ (USD)
         refundTime: new Date(),
         stripeRefundId: refund.id,
       };
@@ -179,8 +197,8 @@ export const cancelBooking = async (req, res) => {
 
     // Cập nhật số lượng vé
     const ticket = await Ticket.findById(booking.ticket._id);
-    ticket.quantity += 1;
-    ticket.bookedQuantity -= 1;
+    ticket.quantity += booking.quantity;
+    ticket.bookedQuantity -= booking.quantity;
     await ticket.save();
 
     // Xóa booking

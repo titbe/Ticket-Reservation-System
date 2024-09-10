@@ -14,6 +14,14 @@ export const addTicket = async (req, res) => {
   const { name, price, quantity } = req.body;
 
   try {
+    // Kiểm tra nếu trùng tên vé thì lỗi
+    const existingTicket = await Ticket.findOne({ name });
+    if (existingTicket) {
+      return res
+        .status(400)
+        .json({ message: "A ticket with this name already exists" });
+    }
+
     const newTicket = new Ticket({
       name,
       price,
@@ -31,6 +39,12 @@ export const addTicket = async (req, res) => {
 
 export const updateTicket = async (req, res) => {
   const { id } = req.params;
+  const { price, quantity, bookedQuantity } = req.body;
+
+  // Kiểm tra giá vs số lượng ko âm
+  if (price < 0 ||  quantity < 0 || bookedQuantity < 0) 
+    return res.status(400).json({ message: "Price or quantity or bookedQuantity must be greater than or equal to 0" });
+
   try {
     const updateTicket = await Ticket.findByIdAndUpdate(id, req.body, {
       new: true,

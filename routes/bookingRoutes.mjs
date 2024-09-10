@@ -7,8 +7,8 @@ import {
 
 const router = express.Router();
 
-router.post("/book", bookTicket);
-router.post("/confirm/:id", confirmBooking);
-router.post("/cancel/:id", cancelBooking);
+router.post("/book/:ticketId", bookTicket);
+router.post("/confirm/:bookingId", confirmBooking);
+router.post("/cancel/:bookingId", cancelBooking);
 
 export default router;

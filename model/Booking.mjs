@@ -11,6 +11,11 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  quantity: {
+    type: Number,
+    required: true,
+    min: 1,
+  },
   bookingTime: {
     type: Date,
     default: Date.now,
