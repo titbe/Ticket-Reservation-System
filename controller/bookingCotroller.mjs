@@ -1,6 +1,6 @@
 import stripe from "stripe";
-import Booking from "../model/Booking";
-import Ticket from "../model/Ticket";
+import Booking from "../model/Booking.mjs";
+import Ticket from "../model/Ticket.mjs";
 
 const stripeClient = stripe(process.env.KEY_STRIPE_SECRET);
 

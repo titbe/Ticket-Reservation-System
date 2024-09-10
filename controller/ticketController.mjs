@@ -1,5 +1,5 @@
-import Booking from "../model/Booking";
-import Ticket from "../model/Ticket";
+import Booking from "../model/Booking.mjs";
+import Ticket from "../model/Ticket.mjs";
 
 export const getTickets = async (req, res) => {
   try {

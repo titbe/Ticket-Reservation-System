@@ -4,7 +4,7 @@ import {
   deleteTicket,
   getTickets,
   updateTicket,
-} from "../controller/ticketController";
+} from "../controller/ticketController.mjs";
 
 const router = express.Router();
 

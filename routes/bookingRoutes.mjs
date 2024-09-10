@@ -3,7 +3,7 @@ import {
   bookTicket,
   cancelBooking,
   confirmBooking,
-} from "../controller/bookingCotroller";
+} from "../controller/bookingCotroller.mjs";
 
 const router = express.Router();
 
