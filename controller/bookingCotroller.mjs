@@ -1,8 +1,13 @@
 import Stripe from "stripe";
 import Booking from "../model/Booking.mjs";
 import Ticket from "../model/Ticket.mjs";
+import dotenv from "dotenv";
 
-const stripeClient = Stripe(process.env.KEY_STRIPE_SECRET);
+dotenv.config();
+
+const stripeClient = new Stripe(process.env.KEY_STRIPE_SECRET, {
+  apiVersion: "2022-08-01",
+});
 
 export const bookTicket = async (req, res) => {
   const { ticketId } = req.params;
@@ -14,7 +19,7 @@ export const bookTicket = async (req, res) => {
     // Tự động hủy các booking đã hết hạn (quá 5 phút)
     const expiredBookings = await Booking.find({
       confirmed: false,
-      bookingTime: { $lt: new Date(now - 5 * 60 * 1000) }, // Tìm các booking quá 5 phút chưa được xác nhận
+      bookingTime: { $lt: new Date(now - 10 * 60 * 1000) }, // Tìm các booking quá 5 phút chưa được xác nhận
     });
 
     for (const booking of expiredBookings) {
@@ -60,22 +65,20 @@ export const bookTicket = async (req, res) => {
     const updatedTicket = await Ticket.findOneAndUpdate(
       { _id: ticketId, quantity: { $gte: quantity } }, // Đảm bảo số lượng vé hiện có >= số lượng vé ycau $gte là toán tử so sánh "greater than or equal" (lớn hơn hoặc bằng)
       {
-        $inc: { quantity: -quantity, bookedQuantity: quantity }, // Atomic update
+        $inc: { quantity: -quantity, bookedQuantity: quantity }, // Cập nhật vé
       },
       { new: true }
     );
     if (!updatedTicket) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Failed to update ticket. It might have been booked by another request.",
-        });
+      return res.status(400).json({
+        message:
+          "Failed to update ticket. It might have been booked by another request.",
+      });
     }
 
     // Lưu thông tin thời gian vào cookie
     res.cookie(`booking_${newBooking._id}`, bookingTime.toISOString(), {
-      maxAge: 5 * 60 * 1000, // Thời gian hết hạn cookie sau 5 phút
+      maxAge: 10 * 60 * 1000, // Thời gian hết hạn cookie sau 5 phút
       httpOnly: true,
       signed: true, // Đảm bảo cookie được ký
     });
@@ -91,7 +94,7 @@ export const bookTicket = async (req, res) => {
 
 export const confirmBooking = async (req, res) => {
   const { bookingId } = req.params;
-  const { paymentMethodId } = req.body;
+  // const { paymentMethodId } = req.body;
 
   try {
     const booking = await Booking.findById(bookingId).populate("ticket");
@@ -114,53 +117,88 @@ export const confirmBooking = async (req, res) => {
     const bookingTimeDate = new Date(bookingTime);
     const now = new Date();
     const timeDiff = now - bookingTimeDate;
-    const timeLimit = 5 * 60 * 1000; // 5 phút
+    const timeLimit = 10 * 60 * 1000; // 5 phút
 
     // Nếu quá thời gian, hủy booking
     if (timeDiff > timeLimit) {
       res.clearCookie(`booking_${bookingId}`);
       await Booking.findByIdAndDelete(bookingId);
 
-      const ticket = await Ticket.findById(booking.ticket._id);
-      ticket.quantity += booking.quantity;
-      ticket.bookedQuantity -= booking.quantity;
-      await ticket.save();
+      // const ticket = await Ticket.findById(booking.ticket._id);
+      // ticket.quantity += booking.quantity;
+      // ticket.bookedQuantity -= booking.quantity;
+      // await ticket.save();
+      const updatedTicket = await Ticket.findOneAndUpdate(
+        { _id: booking.ticket._id, quantity: { $gte: quantity } }, // Đảm bảo số lượng vé hiện có >= số lượng vé ycau $gte là toán tử so sánh "greater than or equal" (lớn hơn hoặc bằng)
+        {
+          $inc: { quantity: -quantity, bookedQuantity: quantity }, // Cập nhật vé
+        },
+        { new: true }
+      );
+      if (!updatedTicket) {
+        return res.status(400).json({
+          message:
+            "Failed to update ticket. It might have been booked by another request.",
+        });
+      }
 
       return res
         .status(400)
         .json({ message: "Booking confirmation time has expired" });
     }
 
-    // Xác nhận thanh toán qua Stripe
-    const totalPaymentAmount = booking.quantity * booking.ticket.price;
-    const paymentIntent = await stripeClient.paymentIntents.create({
-      amount: Math.round(totalPaymentAmount * 100), // Stripe tính theo cent
-      currency: "usd",
-      payment_method: paymentMethodId,
-      confirm: true,
-    });
+    // // Xác nhận thanh toán qua Stripe
+    // const totalPaymentAmount = booking.quantity * booking.ticket.price;
+    // const paymentIntent = await stripeClient.paymentIntents.create({
+    //   amount: Math.round(totalPaymentAmount * 100), // Stripe tính theo cent
+    //   currency: "usd",
+    //   payment_method: paymentMethodId,
+    //   confirm: true,
+    // });
 
-    if (paymentIntent.status !== "succeeded") {
-      return res
-        .status(400)
-        .json({ message: "Payment failed", details: paymentIntent.status });
-    }
+    // if (paymentIntent.status !== "succeeded") {
+    //   return res
+    //     .status(400)
+    //     .json({ message: "Payment failed", details: paymentIntent.status });
+    // }
+
+    // Tạo Stripe Checkout Session
+    const session = await stripeClient.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: booking.ticket.name, // Tên sản phẩm từ ticket
+            },
+            unit_amount: booking.ticket.price * 100, // Giá của vé tính theo cents
+          },
+          quantity: booking.quantity,
+        },
+      ],
+      success_url: `${process.env.CLIENT_URL}/success.html`,
+      cancel_url: `${process.env.CLIENT_URL}/cancel.html`,
+    });
 
     // Cập nhật thông tin thanh toán và xác nhận booking
     booking.confirmed = true;
     booking.paymentDetails = {
-      amount: totalPaymentAmount,
+      amount: booking.quantity * booking.ticket.price,
       paymentTime: now,
       method: "stripe",
-      stripePaymentId: paymentIntent.id,
+      stripePaymentId: session.id,
     };
 
     await booking.save();
 
     res.clearCookie(`booking_${bookingId}`); // Xóa cookie khi đã thanh toán thành công
-    res
-      .status(200)
-      .json({ message: "Booking confirmed and payment successful", booking });
+
+    return res.status(200).json({ url: session.url });
+    // res
+    //   .status(200)
+    //   .json({ message: "Booking confirmed and payment successful", booking });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -196,10 +234,19 @@ export const cancelBooking = async (req, res) => {
     res.clearCookie(`booking_${bookingId}`);
 
     // Cập nhật số lượng vé
-    const ticket = await Ticket.findById(booking.ticket._id);
-    ticket.quantity += booking.quantity;
-    ticket.bookedQuantity -= booking.quantity;
-    await ticket.save();
+    const updatedTicket = await Ticket.findOneAndUpdate(
+      { _id: booking.ticket._id, quantity: { $gte: quantity } }, // Đảm bảo số lượng vé hiện có >= số lượng vé ycau $gte là toán tử so sánh "greater than or equal" (lớn hơn hoặc bằng)
+      {
+        $inc: { quantity: -quantity, bookedQuantity: quantity }, // Cập nhật vé
+      },
+      { new: true }
+    );
+    if (!updatedTicket) {
+      return res.status(400).json({
+        message:
+          "Failed to update ticket. It might have been booked by another request.",
+      });
+    }
 
     // Xóa booking
     await Booking.findByIdAndDelete(bookingId);
