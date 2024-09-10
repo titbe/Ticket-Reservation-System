@@ -18,9 +18,16 @@ const bookingSchema = new mongoose.Schema({
 
   //Trạng thái xác nhận thanh toán của booking
   confirmed: {
-    type: Date,
+    type: Boolean,
     default: false,
   },
+
+  //Cờ chỉ trạng thái hết hạn của booking
+  expired: {
+    type: Boolean,
+    default: false,
+  },
+
   pamentDetail: {
     amount: {
       type: Number,
@@ -40,12 +47,13 @@ const bookingSchema = new mongoose.Schema({
     stripePaymentId: {
       type: String,
     },
-  },
 
-  //Cờ chỉ trạng thái hết hạn của booking
-  expired: {
-    type: Boolean,
-    default: false,
+    //Hoàn trả tiền
+    refund: {
+      amount: Number,
+      refundTime: Date,
+      stripeRefundId: String,
+    },
   },
 });
 
