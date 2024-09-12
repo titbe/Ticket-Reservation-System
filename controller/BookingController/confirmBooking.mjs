@@ -24,6 +24,8 @@ export const confirmBooking = async (req, res) => {
 
     // Tạo Payment Intent và xác nhận thanh toán
     const totalPaymentAmount = booking.quantity * booking.ticket.price;
+    console.log(booking.quantity, booking.ticket.price);
+    
     const paymentIntent = await stripeClient.paymentIntents.create({
       amount: Math.round(totalPaymentAmount * 100), // Stripe tính theo cent
       currency: "usd",
