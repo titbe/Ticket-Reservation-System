@@ -27,13 +27,7 @@ const bookingSchema = new mongoose.Schema({
     default: false,
   },
 
-  //Cờ chỉ trạng thái hết hạn của booking
-  expired: {
-    type: Boolean,
-    default: false,
-  },
-
-  pamentDetail: {
+  paymentDetail: {
     amount: {
       type: Number,
       default: 0,
@@ -45,7 +39,7 @@ const bookingSchema = new mongoose.Schema({
     //Phương thức thanh toán
     method: {
       type: String,
-      default: "stripe",
+      default: "pending",
     },
 
     //ID của PaymentIntent từ Stripe

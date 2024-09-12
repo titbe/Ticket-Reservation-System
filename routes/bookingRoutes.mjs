@@ -1,9 +1,8 @@
 import express from "express";
-import {
-  bookTicket,
-  cancelBooking,
-  confirmBooking,
-} from "../controller/bookingCotroller.mjs";
+import { bookTicket } from "../controller/BookingController/bookTicket.mjs";
+import { confirmBooking } from "../controller/BookingController/confirmBooking.mjs";
+import { cancelBooking } from "../controller/BookingController/cancelBooking.mjs";
+
 
 const router = express.Router();
 

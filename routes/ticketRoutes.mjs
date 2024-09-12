@@ -1,10 +1,9 @@
 import express from "express";
-import {
-  addTicket,
-  deleteTicket,
-  getTickets,
-  updateTicket,
-} from "../controller/ticketController.mjs";
+import { getTickets } from "../controller/TicketController/getTickets.mjs";
+import { addTicket } from "../controller/TicketController/addTicket.mjs";
+import { updateTicket } from "../controller/TicketController/updateTicket.mjs";
+import { deleteTicket } from "../controller/TicketController/deleteTicket.mjs";
+
 
 const router = express.Router();
 

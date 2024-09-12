@@ -23,11 +23,28 @@ export const bookTicket = async (req, res) => {
     });
 
     for (const booking of expiredBookings) {
-      const ticket = await Ticket.findById(booking.ticket._id);
-      if (ticket) {
-        ticket.quantity += booking.quantity; // Tăng lại số lượng vé đã bị giữ
-        ticket.bookedQuantity -= booking.quantity; // Giảm bookedQuantity vì booking đã hết hạn
-        await ticket.save();
+      // const ticket = await Ticket.findById(booking.ticket._id);
+      // if (ticket) {
+      //   ticket.quantity += booking.quantity; // Tăng lại số lượng vé đã bị giữ
+      //   ticket.bookedQuantity -= booking.quantity; // Giảm bookedQuantity vì booking đã hết hạn
+      //   await ticket.save();
+      // }
+
+      booking.expired = true;
+      await booking.save();
+
+      const updatedTicket1 = await Ticket.findOneAndUpdate(
+        { _id: ticketId, quantity: { $gte: quantity } }, // Đảm bảo số lượng vé hiện có >= số lượng vé ycau $gte là toán tử so sánh "greater than or equal" (lớn hơn hoặc bằng)
+        {
+          $inc: { quantity: +quantity, bookedQuantity: -quantity }, // Cập nhật vé
+        },
+        { new: true }
+      );
+      if (!updatedTicket1) {
+        return res.status(400).json({
+          message:
+            "Failed to update ticket. It might have been booked by another request.",
+        });
       }
 
       // Xóa booking hết hạn
@@ -184,11 +201,11 @@ export const confirmBooking = async (req, res) => {
 
     // Cập nhật thông tin thanh toán và xác nhận booking
     booking.confirmed = true;
-    booking.paymentDetails = {
+    booking.paymentDetail = {
       amount: booking.quantity * booking.ticket.price,
       paymentTime: now,
       method: "stripe",
-      stripePaymentId: session.id,
+      stripePaymentId: session.payment_intent.id,
     };
 
     await booking.save();
@@ -213,21 +230,43 @@ export const cancelBooking = async (req, res) => {
       return res.status(400).json({ message: "Booking not found" });
     }
 
+    // Truy xuất thông tin session từ Stripe
+    const session = await stripeClient.checkout.sessions.retrieve(booking.paymentDetail.stripePaymentId);
+    // Truy xuất PaymentIntent từ Checkout Session
+    const paymentIntentId = session.payment_intent;
+    if (!paymentIntentId) {
+      return res.status(400).json({ message: "No PaymentIntent associated with this session" });
+    }
+    // Lấy thông tin PaymentIntent
+    const paymentIntent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
+    
+
     // Nếu vé đã được xác nhận, hoàn tiền 90%
-    if (booking.confirmed) {
-      const refundAmount = booking.paymentDetails.amount * 0.9;
+    if (
+      booking.confirmed &&
+      booking.paymentDetail.amount > 0 &&
+      booking.paymentDetail.method != "pending"
+    ) {
+      const refundAmount = booking.paymentDetail.amount * 0.9;
+      console.log("hiue");
 
       // Tạo refund thông qua Stripe
       const refund = await stripeClient.refunds.create({
-        paymentIntent: booking.paymentDetails.stripePaymentId,
+        payment_intent: paymentIntent,
         amount: Math.round(refundAmount * 100), // Stripe tính theo cent
       });
 
-      booking.paymentDetails.refund = {
+      booking.paymentDetail.refund = {
         amount: refundAmount, //Đổi lại thành đơn vị tiền tệ (USD)
         refundTime: new Date(),
         stripeRefundId: refund.id,
       };
+
+      await booking.save();
+    } else {
+      return res.status(400).json({
+        message: "Booking is not confirmed or does not have payment details",
+      });
     }
 
     // Xóa cookie khi hủy
