@@ -107,7 +107,7 @@ Hệ thống cung cấp các API RESTful để quản lý việc đặt vé, tha
 POST /book/:ticketId
 ```
 
-Mô tả: Tạo đơn đặt vé mới và trả về id của đơn đặt vé đó (bookingId). Cập nhật lại số lượng vé
+Mô tả: Tạo đơn đặt vé mới và trả về id của đơn đặt vé đó (bookingId). Cập nhật lại số lượng vé. Tạo một hàm setTimeout để xóa những đơn đặt không xác nhận trong khoảng thời gian 5 phút
 
 Giải thích
 | Tham số | Kiểu dữ liệu      | Mô tả                |
