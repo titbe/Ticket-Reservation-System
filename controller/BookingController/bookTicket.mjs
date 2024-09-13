@@ -45,7 +45,7 @@ export const bookTicket = async (req, res) => {
       });
     }
 
-    // Tạo một hàm để xóa booking nếu không được xác nhận sau 10 giây
+    // Tạo một hàm để xóa booking nếu không được xác nhận sau 5 phút 
     setTimeout(async () => {
       const expiredBooking = await Booking.findById(newBooking._id);
 
@@ -64,7 +64,7 @@ export const bookTicket = async (req, res) => {
         await Booking.findByIdAndDelete(expiredBooking._id);
 
       }
-    }, 5 * 60 * 1000); // Thực hiện sau 10 giây
+    }, 5 * 60 * 1000); // Thực hiện sau 5 phút
 
     res.status(200).json({
       message: "Ticket booked successfully",
